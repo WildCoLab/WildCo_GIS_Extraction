@@ -1,200 +1,229 @@
-# GIS-extraction
+# GIS-extraction: A list of useful fucntions for GIS Operations in R
 # Used to extract and collate GIS variables for camera trap analysis
-# M Fennell
+# Started by M Fennell
 # mitchfen@mail.ubc.ca
-# Last updated: Jan 7, 2021
 
 ### 0. Setup ####
+#Load Packages
 
-#install.packages(c("raster","osmdata","sf","bcmaps","spex"))
+list.of.packages <- c("raster",           # If you are working with Rasters this is essential
+                      "osmdata",          # Access the OpenStreet map interface -> it is constantly updated
+                      "sf",               # The go to package for spatial operations
+                      "bcmaps",           # The BC specific resources
+                      "spex",             # ?
+                      "dplyr",            # Tidyverse package for data manipulation
+                      "ggplot2",          # Plotting tools
+                      "regeos",           # Spatial operation backend package
+                      "spatialEco",       # Handy tools for spatial ecology
+                      "MODIStools",       # Tool for extracting NDVI
+                      "leaflet")         # Tool for interactive maps!
 
-library(raster)
-library(osmdata)
-library(sf)
-library(spex)
-library(dplyr)
-library(ggplot2)
-library(bcmaps)
-library(rgeos)
-library(spatialEco)
-library(MODISTools)
+# Check which ones you dont have
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+#Install the ones you dont have
+if(length(new.packages)) install.packages(new.packages)
+# Load the packages
+lapply(list.of.packages, require, character.only = TRUE)
 
-getwd()
-setwd("D:/Mitch/Cathedral/3.Data/3.2 GIS")
+###############################################################
+### Load in your camera locations #############################
 
-### 1. Build workspace ####
+sta <- read.csv("Example locations/Example_Camera_Locations.csv", header=T)
 
-lat_range = c(49.000608, 49.154864)
-long_range = c(-120.347670, -120.007913) 
+# Plot them
+plot(sta$Longitude, sta$Latitude, asp=T, las=1,
+     xlab="Longitude", ylab="Latitude")
 
-CATH_crs = CRS("+init=EPSG:32610")
+# The following code determines the best UTM for your data
 
-convert_coords = function(lat,long, from = CRS("+init=epsg:4326"), to) {
-  data = data.frame(long=long, lat=lat)
-  coordinates(data) <- ~ long+lat
-  proj4string(data) = from
-  #Convert to coordinate system specified by EPSG code
-  xy = data.frame(sp::spTransform(data, to))
-  colnames(xy) = c("x","y")
-  return(unlist(xy))
+mlong <- mean(sta$Longitude); mlat <- mean(sta$Latitude)
+
+# UTM finder function
+lonlat2UTM <-  function(lonlat) {
+  utm <-  (floor((lonlat[1] + 180) / 6) %% 60) + 1
+  if(lonlat[2] > 0) {
+    utm + 32600
+  } else{
+    utm + 32700
+  }
 }
 
-utm_bbox = convert_coords(lat = lat_range, long=long_range, to = crs(CATH_crs))
-utm_bbox
+crs.utm <- lonlat2UTM(c(mlong,mlat))
 
-extent_CATH = extent(utm_bbox[1], utm_bbox[2], utm_bbox[3], utm_bbox[4])
+## Convert your camera points into a shapefile using simple features (sf)
+sta.wgs <- st_as_sf(sta, coords = c("Longitude", "Latitude"), crs=4326) # Note the CRS tells R that the projection is WGS1984
 
-### 2. Extract OSM data ####
+## Convert the lat long to UTM - st_transform
+sta.utm <- st_transform(sta.wgs,crs=crs.utm) 
 
-osm_bbox = c(long_range[1],lat_range[1], long_range[2],lat_range[2])
+### Buffer these points by 50km to create an area of interest(AOI) 
+tmp <- st_buffer(sta.utm, 50000)
 
-CATH_highway = opq(osm_bbox) %>%
-  add_osm_feature("highway") %>%
-  osmdata_sf()
-CATH_highway
+# Get the bounding box coordinates
+aoi.utm <- st_as_sfc(st_bbox(tmp))
+aoi.wgs <- st_bbox(st_transform(aoi.utm, 4326))
+#remove(tmp)
 
-# plot to preview
-CATH_lines = st_transform(CATH_highway$osm_lines, crs=crs(CATH_crs))
+# Check your aoi is sensible
+plot(st_geometry(aoi.utm))  # Plot the box
+plot(st_geometry(sta.utm), add=T, col="red", pch=19) # Add your camera stations
 
-ggplot(CATH_lines, aes(color = osm_id)) +
-  geom_sf() +
-  theme(legend.position = "none")
+
+st_write(aoi.utm, paste0("Exported_data/", "aoi_utm.shp"), append=F)
+
+
+###########################################################
+### 2. Extract OSM data ###################################
+
+# ESSENTIAL - SEE OSM CATAEGORIES FOR DETAIL:
+
+# https://wiki.openstreetmap.org/wiki/Map_features
+
+# Create your bounding box
+bb_wgs <- st_bbox(aoi.wgs)
+
+
+# Highways represent all linear features
+highway <- opq(bb_wgs) %>%
+           add_osm_feature("highway") %>%
+           osmdata_sf()
+
+# Convert the extracted highways to the chosen UTM
+lines.shp <- st_transform(highway$osm_lines, crs=crs(sta.utm))
+
+# Plot in Base R
+plot(st_geometry(lines.shp), col="grey2")
+# Add camera stations
+plot(st_geometry(sta.utm), add=T, col="red", pch=19) # Add your camera stations
+
+# Plot using ggplot (commented out becasue this takes ages for me)
+# ggplot(lines.shp, aes(color = osm_id)) +
+#   geom_sf() +
+#   theme(legend.position = "none")
+
+########
+# Filter OSM objects
 
 # Look good? Now filter into desired categories
-CATH_trails = CATH_lines %>%
+trails.shp = lines.shp %>%
   filter(highway %in% c("path","bridleway","footway"))
 
-ggplot(CATH_trails, aes(color = osm_id)) +
+ggplot(trails.shp, aes(color = osm_id)) +
   geom_sf() +
   theme(legend.position = "none")
 
-CATH_roads = CATH_lines %>%
+roads.shp = lines.shp %>%
   filter(highway %in% c("track","unclassified","service"))
 
-ggplot(CATH_roads, aes(color = osm_id)) + 
+ggplot(roads.shp, aes(color = osm_id)) + 
   geom_sf() +
   theme(legend.position = "none")
 
-# Save as shapefile
-st_write(CATH_trails, paste0(getwd(),"/","CATH_trails.shp"))
-st_write(CATH_roads, paste0(getwd(),"/","CATH_roads.shp"))
-st_write(CATH_lines, paste0(getwd(),"/","CATH_roads_trails.shp"))
+##############################
+# Save shapefiles ############ 
+dir.create("Exported_data")
 
+# Save as shapefile [NOT WORKING]
+#st_write(trails.shp, paste0("Exported_data/", "New_trails.shp"), append=F)
+#st_write(roads.shp,  paste0("Exported_data/", "New_roads.shp"), append=F)
+#st_write(lines.shp,  paste0("Exported_data/", "New_roads_trails.shp"), append=F)
+
+colnames(trails.shp)
+########################################
 ### 3. Extract elevation for points ####
 # Currently using 25m 1:250000 BC Gov CDED DEM 
 # (https://www2.gov.bc.ca/gov/content/data/geographic-data-services/topographic-data/elevation/digital-elevation-model)
 
+
 # Download DEM for AOI
-extent_CATH_sf <- spex(extent_CATH, crs = CATH_crs)
-CATH_raster<- cded_raster(aoi = extent_CATH_sf)
+#extent_CATH_sf <- spex(extent_CATH, crs = CATH_crs)
+DEM_raster<- cded_raster(aoi = aoi.utm)
+plot(DEM_raster)
+# Check the stations are there!
+plot(st_geometry(sta.wgs), add=T)
 
-# Load camera location data
-CATH_points <- read.csv("Cathedral_Camera_Deployments_August2020.csv")
-colnames(CATH_points)[1] <- "Site"
+# Extract value from raster at each point and add it to your dataframe
+sta$Elevation <- extract(DEM_raster, sta.wgs)
 
-# Convert site locations to spatial points
-CATH_points_sp <- SpatialPoints(cbind.data.frame(CATH_points$Long, CATH_points$Lat))
+######################################################
+# Extract distance to other polygons or lines
 
-# Extract value from raster at each point
-CATH_points_el_sp <- extract(CATH_raster, CATH_points_sp, sp = T)
 
-CATH_points_elev <- as.data.frame(CATH_points_el_sp)
-colnames(CATH_points_elev) <- c("Elevation", "Long", "Lat")
-
-# Add elevation data to master DF
-CATH_points_master <- full_join(CATH_points,CATH_points_elev)
-
-### 4. Extract distance to water ####
-# Using NRCAN CANVEC (https://maps.canada.ca/czs/index-en.html)
-
-CATH_watercourse <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CANVEC_Water/watercourse_1.shp")
-CATH_waterbody <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CANVEC_Water/waterbody_2.shp")
-CATH_waterbody_line <- as(CATH_waterbody, "SpatialLinesDataFrame")
-
-# Join waterbodies and watercourses (lakes and rivers/streams)
-CATH_water_combi <- raster::union(CATH_watercourse, CATH_waterbody_line)
-CATH_water_combi
-
-# Re-project to UTM
-CATH_water_combi_proj <- spTransform(CATH_water_combi, CATH_crs)
-CATH_water_combi_proj
-
-# Fix up points to match
-proj4string(CATH_points_sp) <- CRS("+init=epsg:4326 +proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
-CATH_points_sp_proj <- spTransform(CATH_points_sp, CATH_crs)
-CATH_points_sp_proj
-
-# Extract distance to water
-CATH_dist_h2o <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
-colnames(CATH_dist_h2o) <- c("Site", "Long", "Lat")
-
-for (i in 1:nrow(CATH_points)){
-  tmp <- gDistance(CATH_points_sp_proj[i], CATH_water_combi_proj)
-  CATH_dist_h2o$d.H2O[i] <- tmp
-}
-
-CATH_points_master <- left_join(CATH_points_master, CATH_dist_h2o)
-
-### 5. Extract distance to trails and roads (and both) ####
+### 4. Extract distance to trails and roads (and both) ####
 #trails
-CATH_trail_shp <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CATH_trails.shp")
-plot(CATH_trail_shp)
+plot(trails.shp)
 
-CATH_dist_trails <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
-colnames(CATH_dist_trails) <- c("Site", "Long", "Lat")
+# Find the nearest object
+nearest  <- st_nearest_feature(sta.utm, trails.shp)
+# For each station, measure the distance to the nearest object and add it to the sta datafile
+sta$d.TRL <-  st_distance(sta.utm, trails.shp[nearest,], by_element=TRUE)
 
-for (i in 1:nrow(CATH_points)){
-  tmp <- gDistance(CATH_points_sp_proj[i], CATH_trail_shp)
-  CATH_dist_trails$d.TRL[i] <- tmp
-}
+#Repeat for roads
+# Find the nearest object
+nearest  <- st_nearest_feature(sta.utm, trails.shp)
+# For each station, measure the distance to the nearest object and add it to the sta datafile
+sta$d.ROAD <-  st_distance(sta.utm, roads.shp[nearest,], by_element=TRUE)
 
-CATH_points_master <- left_join(CATH_points_master, CATH_dist_trails)
+# Repeat for linear features
+# Find the nearest object
+nearest  <- st_nearest_feature(sta.utm, lines.shp)
+# For each station, measure the distance to the nearest object and add it to the sta datafile
+sta$d.LIN <-  st_distance(sta.utm, lines.shp[nearest,], by_element=TRUE)
 
-# roads
-CATH_road_shp <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CATH_roads.shp")
-plot(CATH_road_shp)
 
-CATH_dist_roads <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
-colnames(CATH_dist_roads) <- c("Site", "Long", "Lat")
-
-for (i in 1:nrow(CATH_points)){
-  tmp <- gDistance(CATH_points_sp_proj[i], CATH_road_shp)
-  CATH_dist_roads$d.ROAD[i] <- tmp
-}
-
-CATH_points_master <- left_join(CATH_points_master, CATH_dist_roads)
-
-#combined road and trails (linear features)
-CATH_road_trail_shp <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CATH_roads_trails.shp")
-plot(CATH_road_trail_shp)
-
-CATH_dist_roads_trails <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
-colnames(CATH_dist_roads_trails) <- c("Site", "Long", "Lat")
-
-for (i in 1:nrow(CATH_points)){
-  tmp <- gDistance(CATH_points_sp_proj[i], CATH_road_trail_shp)
-  CATH_dist_roads_trails$d.LIN[i] <- tmp
-}
-
-CATH_points_master <- left_join(CATH_points_master, CATH_dist_roads_trails)
-
-### 6. Calculate terrain ruggedness ####
+######################################################
+### 6. Calculate terrain ruggedness ##################
 #VRM (Sappington et al 2007)
 
-vrm3 <- vrm(CATH_raster, s=3) #Likely use this one
-vrm5 <- vrm(CATH_raster, s=5)
+vrm3 <- vrm(DEM_raster, s=3) #Likely use this one
+vrm5 <- vrm(DEM_raster, s=5)
 
 # Extract value from raster at each point
-CATH_points_vrm_sp <- extract(vrm3, CATH_points_sp, sp = T)
+sta$VRM <- extract(vrm3, sta.wgs)
 
-CATH_points_vrm <- as.data.frame(CATH_points_vrm_sp)
-colnames(CATH_points_vrm) <- c("VRM", "Long", "Lat")
+### Save and export master ####
 
-# Add elevation data to master DF
-CATH_points_master <- left_join(CATH_points_master,CATH_points_vrm)
+write.csv(sta, "Exported_data/Station_Spatial_covariates.csv", row.names = F)
 
 
-### ?. Save and export master ####
 
-write.csv(CATH_points_master, "CATH_master_sites_Feb16.csv", row.names = F)
+
+
+
+#####################################
+# Below not yet implemented
+
+
+
+# ####################################################
+# ### 4. Extract distance to water ###################
+# # Using NRCAN CANVEC (https://maps.canada.ca/czs/index-en.html)
+# 
+# CATH_watercourse <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CANVEC_Water/watercourse_1.shp")
+# CATH_waterbody <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CANVEC_Water/waterbody_2.shp")
+# CATH_waterbody_line <- as(CATH_waterbody, "SpatialLinesDataFrame")
+# 
+# # Join waterbodies and watercourses (lakes and rivers/streams)
+# CATH_water_combi <- raster::union(CATH_watercourse, CATH_waterbody_line)
+# CATH_water_combi
+# 
+# # Re-project to UTM
+# CATH_water_combi_proj <- spTransform(CATH_water_combi, CATH_crs)
+# CATH_water_combi_proj
+# 
+# # Fix up points to match
+# proj4string(CATH_points_sp) <- CRS("+init=epsg:4326 +proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+# CATH_points_sp_proj <- spTransform(CATH_points_sp, CATH_crs)
+# CATH_points_sp_proj
+# 
+# # Extract distance to water
+# CATH_dist_h2o <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
+# colnames(CATH_dist_h2o) <- c("Site", "Long", "Lat")
+# 
+# for (i in 1:nrow(CATH_points)){
+#   tmp <- gDistance(CATH_points_sp_proj[i], CATH_water_combi_proj)
+#   CATH_dist_h2o$d.H2O[i] <- tmp
+# }
+# 
+# CATH_points_master <- left_join(CATH_points_master, CATH_dist_h2o)
 
