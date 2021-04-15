@@ -1,3 +1,4 @@
+### *Note* this script was not developed as part of the R proj ###
 ###################################################################
 # NDVI/EV/LAI/whatever you can get your hands on from MODIStools
 library(MODISTools)
