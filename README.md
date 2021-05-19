@@ -1,6 +1,6 @@
-# GIS-extraction
+# GIS-extraction (Currently in development) 
 
-This script gives to worked examples of how to extract GIS information in R.
+This script gives worked examples of how to extract GIS information in R.
 
 ## Overview: 
 Currently functions to extract:
