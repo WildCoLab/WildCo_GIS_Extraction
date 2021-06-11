@@ -17,6 +17,7 @@ To-Do:
 - NDVI
 - EVI?
 - Google Earth Engine
+       Nice example code : https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&ved=2ahUKEwju0cnZ3pDxAhVSo54KHT2pCoUQFjAAegQIBBAD&url=http%3A%2F%2Famazeone.com.br%2Fbarebra%2Fpandora%2FrgeebookT1eng.pdf&usg=AOvVaw1-k_18P-hpbSErVvu8M_Hk
 - Map making example (ggplot)
 - Leaflet
 - Calculate distance to water [Not yet implemented]
