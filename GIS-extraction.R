@@ -16,6 +16,10 @@ list.of.packages <- c("raster",           # If you are working with Rasters this
                       "regeos",           # Spatial operation backend package
                       "spatialEco",       # Handy tools for spatial ecology
                       "MODIStools",       # Tool for extracting NDVI
+                      "ggmap",            # Add background  
+                      "ggsn",             # north arrow 
+                      "ggspatial",        # scale bar
+                     "cowplot",           # inset map
                       "leaflet")         # Tool for interactive maps!
 
 # Check which ones you dont have
@@ -68,8 +72,11 @@ aoi.wgs <- st_bbox(st_transform(aoi.utm, 4326))
 plot(st_geometry(aoi.utm))  # Plot the box
 plot(st_geometry(sta.utm), add=T, col="red", pch=19) # Add your camera stations
 
-
 st_write(aoi.utm, paste0("Exported_data/", "aoi_utm.shp"), append=F)
+
+
+
+
 
 
 ###########################################################
@@ -108,7 +115,7 @@ plot(st_geometry(sta.utm), add=T, col="red", pch=19) # Add your camera stations
 trails.shp = lines.shp %>%
   filter(highway %in% c("path","bridleway","footway"))
 
-ggplot(trails.shp, aes(color = osm_id)) +
+ggplot(lines.shp, aes(color = osm_id)) +
   geom_sf() +
   theme(legend.position = "none")
 
@@ -137,13 +144,17 @@ colnames(trails.shp)
 
 # Download DEM for AOI
 #extent_CATH_sf <- spex(extent_CATH, crs = CATH_crs)
-DEM_raster<- cded_raster(aoi = aoi.utm)
+DEM_raster<- (aoi = aoi.utm)
 plot(DEM_raster)
 # Check the stations are there!
 plot(st_geometry(sta.wgs), add=T)
 
 # Extract value from raster at each point and add it to your dataframe
 sta$Elevation <- extract(DEM_raster, sta.wgs)
+
+#alternative option if the area is not in BC (cded_raster only work for BC)
+
+
 
 ######################################################
 # Extract distance to other polygons or lines
@@ -185,9 +196,98 @@ sta$VRM <- extract(vrm3, sta.wgs)
 
 write.csv(sta, "Exported_data/Station_Spatial_covariates.csv", row.names = F)
 
+######################################################
+### 7. Make nice maps in R ##################
 
+#check the coordinate
+aoi.wgs
 
+#maually copy coordinate here 
+myLocation <- c(-120.96290, 48.56223, -119.31807, 49.59065) 
 
+#add background
+mad_map <- get_map(location=myLocation, maptype = "roadmap")
+
+#check it load
+plot(mad_map)
+
+#you can pick different background 
+??get_map # check mmaptype, some are not working 
+
+#using ggmap to create background map 
+(g1 <- ggmap(mad_map)+
+   geom_sf(data=sta.wgs, inherit.aes = F)+
+   ggtitle("My camera traps location"))
+
+#You can change the coordinates above to "zoom"
+
+#add some fake detection rate and species 
+sta.wgs$detection <- c(1,5,6,2,3,4,8,9,10)
+sta.wgs$species <- c("deer", "elephant", "deer",
+                     "lion","dinosaur", "dinosaur",
+                     "elephan", "lion","fish")
+
+#group by species and summarise detection
+sta.wgs_grp<- sta.wgs %>%
+  group_by(species)%>%
+  summarise(detection=sum(detection))%>%
+  st_as_sf()
+
+#add size and color
+g1 <- ggmap(mad_map)+
+ geom_sf(data=sta.wgs_grp, inherit.aes = F, aes(size=detection, color=detection))+
+  scale_color_gradient(low="white", high="blue")+ #color bar
+  scale_size_continuous(guide="none")+ #remove useless legend
+  annotation_scale(location="bl", width_hint=0.3)+ # scale bar
+  ggtitle("My detection")
+
+#Now add a north arrow and plot the map.
+north2(g1, x=.22, y=.3, symbol=9)
+  
+#Inset map
+#select area we want in inset map
+mapCan <- getData("GADM", country = "Canada",level = 1)
+mapCan <- fortify(mapCan)
+
+#create the inset map with a red rectangle of aoi (need to change coordinate)
+g2 <- ggplotGrob(
+  ggplot() +
+  geom_polygon(data = mapCan, aes(x = long, y = lat, group = group),fill = "#b2b2b2", color = "black", size = 0.4) +
+    coord_map() +
+    theme_map() +
+    theme(panel.background = element_rect(fill = NULL)) +
+    geom_rect(
+      aes(xmin = -120.96290, xmax = -119.31807, ymin = 48.56223, ymax = 49.59065), fill = NA, 
+      col = "red", size = 1
+    )
+)
+  
+plot(g2)
+
+#need to play with the coordinate of the map to make it nice, here it is just an example
+g1<- g1+
+  annotation_custom(grob = g2, xmin = -119.8, xmax = -119.4,
+                    ymin = 48.6, ymax = 48.8)
+north2(g1, x=.22, y=.3, symbol=9)
+
+#quickly make a map for each species 
+#I want a closer zoom so I change the ggmap location (you dont have to)
+
+myLocation <- c(-120.27, 49.03, -120.03, 49.12) 
+
+#add background
+mad_map <- get_map(location=myLocation, maptype = "roadmap")
+
+#plot map for each species and save map
+unique<-unique(sta.wgs_grp$species)
+
+#first create a folder "plot" in your working directory
+for (i in unique){
+  temp_map<-ggmap(mad_map)+
+    geom_sf(data=subset(sta.wgs_grp, sta.wgs_grp$species==i), inherit.aes = F, aes(size=detection, color=detection))+
+    ggtitle(i) 
+  ggsave(paste0(i, ".png"), path="./plot/", height = 20, width = 20, units="cm")
+}
 
 
 #####################################
