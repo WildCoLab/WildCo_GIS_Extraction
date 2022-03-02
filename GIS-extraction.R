@@ -13,14 +13,14 @@ list.of.packages <- c("raster",           # If you are working with Rasters this
                       "spex",             # ?
                       "dplyr",            # Tidyverse package for data manipulation
                       "ggplot2",          # Plotting tools
-                      "regeos",           # Spatial operation backend package
+                      "rgeos",            # Spatial operation backend package
                       "spatialEco",       # Handy tools for spatial ecology
-                      "MODIStools",       # Tool for extracting NDVI
+                      "MODISTools",       # Tool for extracting NDVI
                       "ggmap",            # Add background  
                       "ggsn",             # north arrow 
                       "ggspatial",        # scale bar
-                     "cowplot",           # inset map
-                      "leaflet")         # Tool for interactive maps!
+                      "cowplot",          # inset map
+                      "leaflet")          # Tool for interactive maps!
 
 # Check which ones you dont have
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
