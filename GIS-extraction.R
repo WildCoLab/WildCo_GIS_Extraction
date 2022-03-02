@@ -270,6 +270,30 @@ g1<- g1+
                     ymin = 48.6, ymax = 48.8)
 north2(g1, x=.22, y=.3, symbol=9)
 
+### Inset map - alternate method
+# The above method can take quite a while to render, 
+# here is an alternate, quick and dirty method:
+
+# get BC outline from bcmaps package
+mapBC <- bc_bound()
+
+# plot rectangle of aoi on it
+inset <- ggplot(mapBC) +
+  geom_sf(fill = "white", colour = "black") +
+  geom_sf(data = aoi.utm,
+          color = "red", fill = "white") +
+  theme_void()
+inset
+
+# plot together with main map (g1 as example here) 
+# You'll need to play around with plot window size, x,y coords
+# I also moved by legend in my g1 plot to make a space for the inset map in the bottom right
+g1_inset <- ggdraw() +
+  draw_plot(g1, x = -0.15, y = 0) +
+  draw_plot(inset, x = 0.63, y = 0.1, width = 0.4, height = 0.4)
+g1_inset
+
+
 #quickly make a map for each species 
 #I want a closer zoom so I change the ggmap location (you dont have to)
 
