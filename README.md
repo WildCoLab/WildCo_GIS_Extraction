@@ -11,8 +11,9 @@ Currently functions to extract:
 ## 2. Extract trail features from OpenStreetMap (OSM)
 ## 3. Extract elevation at sites (including standalone download of 25m CDED raster)
 ## 4. Calculate distance to trails, roads, linear features
-## 5. Determine terrain ruggedness (Vector Ruggedness Measure: VRM)
-## 6. Map making example in GGPLOT 
+## 5. Calculate density trail/linear feature in buffer
+## 6. Determine terrain ruggedness (Vector Ruggedness Measure: VRM)
+## 7. Map making example in GGPLOT 
 
 To-Do:
 - NDVI
