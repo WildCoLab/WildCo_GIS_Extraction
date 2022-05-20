@@ -182,6 +182,50 @@ nearest  <- st_nearest_feature(sta.utm, lines.shp)
 sta$d.LIN <-  st_distance(sta.utm, lines.shp[nearest,], by_element=TRUE)
 
 
+##################################################################
+## 5. linear density in buffer-----------------------------------------------------------
+
+#here using the trails.shp but can be done with any linear feature
+
+#create buffer for each camera traps
+sta.utm_buffer <- st_buffer(sta.utm, dist = 500) #pick distance in meters
+sta.utm_buffer$area <- st_area(sta.utm_buffer) #calculate area of the buffer
+
+trail_length <- list() #create output
+
+for (i in 1:nrow(sta.utm_buffer)) { #for each buffer we caclulate de density 
+  split_lines <- trails.shp %>%
+    st_cast(., "MULTILINESTRING", group_or_split = FALSE) %>%
+    st_intersection(., sta.utm_buffer[i, ]) %>%
+    mutate(lineid = row_number())
+  trail_length[[i]] <- split_lines %>%
+    mutate(length = sum(st_length(.)))
+}
+
+#group by camera trap
+trail_length <-  do.call(rbind, trail_length)%>%
+  dplyr::group_by(Deployment.Location.ID) %>% #put the name of the camera traps column
+  summarize(length = sum(length))
+
+trail_length$length_n <- as.numeric(trail_length$length) 
+sta.utm_buffer$area_n <- as.numeric(sta.utm_buffer$area) 
+
+#final math of density calculus 
+sta.utm_buffer <- sta.utm_buffer %>%
+  st_join(., trail_length, join = st_intersects) %>%
+  mutate(density = length_n/area_n)
+
+sta.utm_buffer$density[is.na(sta.utm_buffer$density)] <- 0
+
+#link back to camera trap shapefile
+sta <- sta.utm_buffer %>%
+  select(Deployment.Location.ID.x, density) %>%
+  #  st_drop_geometry(.) %>%
+  rename(Deployment.Location.ID = Deployment.Location.ID.x,
+         Density_trail=density) %>%
+  left_join(sta, by="Deployment.Location.ID") %>%
+  st_as_sf(crs=4326) #put the right crs!
+
 ######################################################
 ### 6. Calculate terrain ruggedness ##################
 #VRM (Sappington et al 2007)
