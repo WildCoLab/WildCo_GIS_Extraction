@@ -144,7 +144,7 @@ colnames(trails.shp)
 
 # Download DEM for AOI
 #extent_CATH_sf <- spex(extent_CATH, crs = CATH_crs)
-DEM_raster<- (aoi = aoi.utm)
+DEM_raster <- cded_raster(aoi = aoi.utm)
 plot(DEM_raster)
 # Check the stations are there!
 plot(st_geometry(sta.wgs), add=T)
@@ -242,6 +242,7 @@ write.csv(sta, "Exported_data/Station_Spatial_covariates.csv", row.names = F)
 
 ######################################################
 ### 7. Make nice maps in R ##################
+##### THIS NO LONGER WORKS - STAMEN MAPS NO LONGER AVAILABLE - TO BE UPDATED #####
 
 #check the coordinate
 aoi.wgs
